@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}Index Builder{% endblock %}
+{% block body_class %} class="centered-top"{% endblock %}
+
+{% block content %}
+<div class="container">
+    <a href="/" class="back-button">Back to Search</a>
+
+    <h1>PDF Index Builder</h1>
+
+    {# --- Flash messages --- #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+    <p class="flash-message flash-{{ category }}">{{ message }}</p>
+    {% endfor %}
+    {% endwith %}
+
+    {% if indexing_active %}
+    {# --- Progress / Results Section (driven by JS polling) --- #}
+    <div id="progress-section">
+        <h3 id="progress-title">Indexing...</h3>
+        <div class="progress-bar-track">
+            <div id="progress-bar" class="progress-bar-fill">
+            </div>
+        </div>
+        <p id="progress-counts" class="stats-summary">Scanning...</p>
+        <p id="progress-current" class="progress-current"></p>
+        <div id="progress-error" class="progress-error"></div>
+
+        <div id="results-section" class="hidden" style="margin-top: 12px;">
+            <div id="results-failed"></div>
+            <form action="{{ url_for('index_dismiss') }}" method="post" style="margin-top: 12px;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit">Dismiss</button>
+            </form>
+        </div>
+    </div>
+    <hr>
+
+    <script nonce="{{ csp_nonce() }}">
+        (function () {
+            var failures = 0;
+            var MAX_FAILURES = 5;
+            var timer = setInterval(function () {
+                fetch('/index/status')
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) {
+                        failures = 0; // Reset on success
+                        var processed = d.indexed + d.skipped + d.failed;
+                        var pct = d.total > 0 ? Math.round((processed / d.total) * 100) : 0;
+                        document.getElementById('progress-bar').style.width = pct + '%';
+                        document.getElementById('progress-counts').textContent =
+                            processed + ' / ' + d.total + ' files (' + d.indexed + ' indexed, ' +
+                            d.skipped + ' skipped, ' + d.failed + ' failed)';
+
+                        if (d.running) {
+                            document.getElementById('progress-current').textContent = d.current_file;
+                        }
+
+                        if (d.error) {
+                            var errEl = document.getElementById('progress-error');
+                            errEl.style.display = 'block';
+                            errEl.textContent = d.error;
+                        }
+
+                        if (d.done) {
+                            clearInterval(timer);
+                            document.getElementById('progress-bar').style.width = '100%';
+                            document.getElementById('progress-title').textContent = 'Indexing Complete';
+                            document.getElementById('progress-current').textContent = '';
+
+                            // Show results
+                            document.getElementById('results-section').style.display = 'block';
+
+                            if (d.failed_files && d.failed_files.length > 0) {
+                                var container = document.getElementById('results-failed');
+                                container.innerHTML = '<h4>Failed Files:</h4><ul class="file-list" id="failed-file-list"></ul>';
+                                var list = document.getElementById('failed-file-list');
+                                for (var i = 0; i < d.failed_files.length; i++) {
+                                    var li = document.createElement('li');
+                                    li.className = 'file-item failed-file-item';
+                                    li.textContent = d.failed_files[i];
+                                    list.appendChild(li);
+                                }
+                            }
+                        }
+                    })
+                    .catch(function () {
+                        failures++;
+                        if (failures >= MAX_FAILURES) {
+                            clearInterval(timer);
+                            var errEl = document.getElementById('progress-error');
+                            errEl.style.display = 'block';
+                            errEl.textContent = 'Lost contact with the server after ' + MAX_FAILURES + ' attempts. Reload the page to check status.';
+                        }
+                    });
+            }, 2000);
+        })();
+    </script>
+
+    {% else %}
+    {# --- Normal form view --- #}
+    <form action="{{ url_for('index_builder') }}" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label for="pdf_directory">PDF Directory or File Path:</label><br>
+        <input type="text" id="pdf_directory" name="pdf_directory" value="{{ config.FILES_DIRECTORY or '' }}" required
+            autofocus>
+        <button type="submit">Start Indexing</button>
+    </form>
+
+    <hr>
+    {% endif %}
+
+    <h2>Currently Indexed Files ({{ currently_indexed_files|length }})</h2>
+    {% if currently_indexed_files %}
+    <ul class="file-list">
+        {% for file in currently_indexed_files %}
+        <li class="file-item">
+            <span>{{ file }}</span>
+            <div class="file-actions">
+                <form class="ocr-form" action="{{ url_for('force_ocr') }}" method="post"
+                    data-confirm="Queue {{ file }} for manual OCR?">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="filename" value="{{ file }}">
+                    <button type="submit" title="Queue for Manual OCR">Force OCR</button>
+                </form>
+                <form class="delete-form" action="{{ url_for('delete_file_from_index') }}" method="post"
+                    data-confirm="Are you sure you want to delete {{ file }} from the index?">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="filename" value="{{ file }}">
+                    <button type="submit" title="Delete from index">Delete</button>
+                </form>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p>No files have been indexed yet.</p>
+    {% endif %}
+
+    <hr>
+
+    <div class="danger-zone">
+        <h2>Danger Zone</h2>
+        <p>This action cannot be undone. This will permanently delete the entire search index from the database, but
+            not the indexed files themselves.</p>
+        <form action="{{ url_for('wipe_index') }}" method="post"
+            data-confirm="Are you absolutely sure you want to wipe the entire index?"
+            data-confirm2="This is your final confirmation. There is no going back. Proceed?">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit">Wipe Full Index</button>
+        </form>
+    </div>
+
+</div>
+<script nonce="{{ csp_nonce() }}">
+    document.querySelectorAll('form[data-confirm]').forEach(function (form) {
+        form.addEventListener('submit', function (e) {
+            if (!confirm(this.dataset.confirm)) {
+                e.preventDefault();
+                return;
+            }
+            if (this.dataset.confirm2 && !confirm(this.dataset.confirm2)) {
+                e.preventDefault();
+            }
+        });
+    });
+</script>
+{% endblock %}

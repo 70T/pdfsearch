@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}No Results{% endblock %}
+{% block body_class %} class="centered-page"{% endblock %}
+
+{% block content %}
+<div class="container search-container">
+    <h1>No Results Found</h1>
+    <p style="color: #a0a0a0; margin: 8px 0; line-height: 1.4;">Your search for <span class="search-term">"{{
+            search_query }}"</span> didn't return any results.</p>
+    <p style="color: #a0a0a0; margin: 8px 0; line-height: 1.4;">Try adjusting your search terms or use quotes for
+        exact phrases (e.g., "hello world").</p>
+    <div style="text-align: center; margin-top: 12px;">
+        <a href="/" class="back-button">Back to Search</a>
+    </div>
+</div>
+{% endblock %}

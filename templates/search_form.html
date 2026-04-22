@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}PDF Search{% endblock %}
+{% block body_class %} class="centered-page"{% endblock %}
+
+{% block content %}
+<div class="search-container">
+    <h1>PDF Search</h1>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, message in messages %}
+    <p class="flash-message flash-{{ category }}">{{ message }}</p>
+    {% endfor %}
+    {% endwith %}
+
+    <form method="GET" action="/" class="search-form">
+        <label for="search_query">Search Query:</label>
+        <input type="text" id="search_query" name="search_query" placeholder="Enter search terms..."
+            value="{{ prefill_query }}" required autofocus>
+
+        <label for="folders">Filter by Folder:</label>
+        <select name="folders" id="folders" multiple>
+            {% for folder in folders %}
+            <option value="{{ folder }}">{{ folder }}</option>
+            {% endfor %}
+        </select>
+        <div class="subfolder-hint">Hold Ctrl to select multiple. Leave empty
+            to search all folders.</div>
+
+        <button type="submit">Search</button>
+        <div class="hint">
+            Searches for a single keyword by default, enclose words in quotation marks (") to search for a full
+            phrase or enclose them with a star (*) to search for words beginning with a specific term.<br>
+        </div>
+    </form>
+    <div class="index-section">
+        <a href="/index" class="index-link">Build/Update Index</a>
+    </div>
+</div>
+{% endblock %}

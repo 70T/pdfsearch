@@ -1,0 +1,31 @@
+# Databases
+pdf_search.db
+pdf_search.db-shm
+pdf_search.db-wal
+
+# Secrets & Config
+.env
+.secret_key
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+
+# Project Specific
+*.lock
+*.json
+base_reference/
+scratch/
+*.txt
+
+# Environment
+.venv/
+env/
+venv/
+ENV/
+
+# Agent
+.agent/

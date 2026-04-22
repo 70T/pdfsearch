@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Search Results{% endblock %}
+
+{% block content %}
+<div class="container">
+    <a href="/" class="back-button">Back to Search</a>
+
+    <div class="results-header">
+        <h1><span>Results for </span><span class="search-term">"{{ search_query }}"</span></h1>
+
+        <div class="sort-controls">
+            <label for="sort_by_results">Sort by:</label>
+            <select id="sort_by_results">
+                <option value="filename" {% if sort_by=='filename' %}selected{% endif %}>Filename (A-Z)</option>
+                <option value="relevance" {% if sort_by=='relevance' %}selected{% endif %}>Relevance</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="stats-summary">
+        Found {{ total_pages }} matches across {{ total_books }} books.
+    </div>
+
+    <div id="results-container" data-search-query="{{ search_query }}" data-sort-by="{{ sort_by }}">
+        {% include 'result_items.html' %}
+    </div>
+
+    <div class="load-more-container">
+        <button id="load-more-btn" {% if not has_more %}style="display: none;" {% endif %}>Load More
+            Results</button>
+        <p id="loading-msg" class="loading-text">Loading...</p>
+        <p id="end-of-results" class="stats-summary" style="margin-top: 10px; {% if has_more %}display: none;{% endif %}">
+            End of results
+        </p>
+    </div>
+</div>
+
+<script nonce="{{ csp_nonce() }}">
+    document.addEventListener('DOMContentLoaded', function () {
+        const resultsContainer = document.getElementById('results-container');
+        const loadMoreBtn = document.getElementById('load-more-btn');
+        const loadingMsg = document.getElementById('loading-msg');
+        const contextSearchQuery = resultsContainer.dataset.searchQuery || "";
+        const contextSortBy = resultsContainer.dataset.sortBy || "filename";
+
+        // Get selected folders from URL params to persist them across pagination
+        const urlParams = new URLSearchParams(window.location.search);
+        const folderParams = urlParams.getAll('folders');
+        let folderQueryString = folderParams.map(f => `&folders=${encodeURIComponent(f)}`).join('');
+
+        // Lazy snippet loading
+        // When a <details> block is opened, fetch any deferred snippets
+        // (those rendered with snippet=None on the server) for that book only.
+        // Placeholders carry data-file-id and data-page-num; the search query
+        // is passed so the server can highlight correctly.
+        function fetchDeferredSnippets(detailsEl) {
+            const placeholders = detailsEl.querySelectorAll('.snippet-placeholder');
+            if (!placeholders.length) return;
+
+            placeholders.forEach(placeholder => {
+                // Guard: already fetched or in-flight
+                if (placeholder.dataset.fetching || !placeholder.classList.contains('snippet-placeholder')) return;
+                placeholder.dataset.fetching = '1';
+
+                const fileId = placeholder.dataset.fileId;
+                const pageNum = placeholder.dataset.pageNum;
+                const url = `/api/snippets?file_id=${fileId}&page_num=${pageNum}&search_query=${encodeURIComponent(contextSearchQuery)}`;
+
+                fetch(url)
+                    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+                    .then(data => {
+                        if (data.snippet) {
+                            // Swap placeholder for the real excerpt
+                            placeholder.innerHTML = data.snippet;
+                            placeholder.classList.remove('snippet-placeholder', 'snippet-loading');
+                        } else {
+                            // Nothing returned — hide gracefully rather than showing blank
+                            placeholder.closest('.match-item').style.display = 'none';
+                        }
+                    })
+                    .catch(() => {
+                        placeholder.querySelector('.snippet-loading-text').textContent = '(snippet unavailable)';
+                    });
+            });
+        }
+
+        // Attach toggle listeners to all current and future <details> elements
+        function attachToggleListeners(root) {
+            root.querySelectorAll('details.result-book').forEach(details => {
+                if (details.dataset.listenerAttached) return;
+                details.dataset.listenerAttached = '1';
+                details.addEventListener('toggle', function () {
+                    if (this.open) fetchDeferredSnippets(this);
+                });
+                // If the browser restores open state on back-navigation, fetch immediately
+                if (details.open) fetchDeferredSnippets(details);
+            });
+        }
+
+        attachToggleListeners(resultsContainer);
+
+        // Sort selector
+        const sortBySelect = document.getElementById('sort_by_results');
+        if (sortBySelect) {
+            sortBySelect.addEventListener('change', function () {
+                const url = new URL(window.location.href);
+                url.searchParams.set('sort_by', this.value);
+                url.searchParams.set('offset', '0');
+                window.location.href = url.toString();
+            });
+        }
+
+        // Pagination (load more)
+        let paginationState = document.querySelector('.pagination-state:last-of-type');
+        let hasMore = paginationState ? paginationState.dataset.hasMore === 'true' : false;
+        let nextOffset = paginationState ? parseInt(paginationState.dataset.nextOffset) : 0;
+
+        loadMoreBtn.addEventListener('click', function () {
+            loadMoreBtn.style.display = 'none';
+            loadingMsg.style.display = 'inline-block';
+
+            fetch(`/search_results_partial?search_query=${encodeURIComponent(contextSearchQuery)}&offset=${nextOffset}${folderQueryString}&sort_by=${encodeURIComponent(contextSortBy)}`)
+                .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
+                .then(html => {
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = html;
+                    while (tempDiv.firstChild) resultsContainer.appendChild(tempDiv.firstChild);
+
+                    // Wire lazy loading for newly injected results
+                    attachToggleListeners(resultsContainer);
+
+                    const newState = resultsContainer.querySelector('.pagination-state:last-of-type');
+                    if (newState) {
+                        hasMore = newState.dataset.hasMore === 'true';
+                        nextOffset = parseInt(newState.dataset.nextOffset);
+                    } else {
+                        hasMore = false;
+                    }
+
+                    loadingMsg.style.display = 'none';
+                    loadMoreBtn.style.display = hasMore ? 'inline-block' : 'none';
+                    document.getElementById('end-of-results').style.display = hasMore ? 'none' : 'block';
+                })
+                .catch(err => {
+                    console.error('Error loading more results:', err);
+                    loadingMsg.textContent = 'Error loading results. Please try again.';
+                });
+        });
+    });
+
+</script>
+{% endblock %}

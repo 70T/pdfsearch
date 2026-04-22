@@ -1,0 +1,53 @@
+{% for i, filename, relative_path, folder_name, open_link, matches, book_total_matches in results %}
+<details class="result-book">
+    <summary>
+        <span class="file-title" title="{{ relative_path }}">{{ filename }}</span>
+        <span class="folder-name">({{ folder_name }})</span>
+        <span class="match-count">{{ book_total_matches }} matches</span>
+    </summary>
+
+    <div class="action-buttons">
+        {# Main link opens the document at page 1 #}
+        {% set browser_link = generate_browser_link(relative_path, 1) %}
+
+        {% if browser_link %}
+        <a href="{{ browser_link }}" target="_blank" class="action-btn primary-btn">
+            View in Browser
+        </a>
+        {% endif %}
+
+        <a href="{{ open_link }}" class="action-btn secondary-btn hide-on-mobile">
+            Open Locally
+        </a>
+    </div>
+
+    <div class="matches-list">
+        {% for match in matches %}
+        <div class="match-item">
+            <div class="match-header">
+                {% set page_link = generate_browser_link(relative_path, match.page) %}
+                <a href="{{ page_link }}" target="_blank" class="page-number" title="Open page {{ match.page }}">Page {{
+                    match.page }}</a>
+                {% if match.chapter %}
+                <span class="page-number chapter-label">
+                    {{ match.chapter }}
+                </span>
+                {% endif %}
+            </div>
+            {% if match.snippet %}
+            <div class="excerpt">{{ match.snippet|safe }}</div>
+            {% else %}
+            <div class="excerpt snippet-placeholder" data-file-id="{{ match.file_id }}"
+                data-page-num="{{ match.page }}">
+                <span class="snippet-loading-text">Loading...</span>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</details>
+{% endfor %}
+
+{# Pagination State Data for AJAX #}
+<div class="pagination-state" data-has-more="{{ 'true' if has_more else 'false' }}" data-next-offset="{{ next_offset }}"
+    style="display: none;"></div>
