@@ -19,7 +19,8 @@ __pycache__/
 *.json
 base_reference/
 scratch/
-*.txt
+# OCR Todo Lists
+ocr_todo_list_*.txt
 
 # Environment
 .venv/
