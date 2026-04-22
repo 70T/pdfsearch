@@ -180,7 +180,10 @@ def search_form():
         except (ValueError, TypeError):
             offset = 0
         limit = SEARCH_RESULTS_LIMIT  # Number of books to display per page
-        selected_folders = request.args.getlist("folders")
+        raw_folders = request.args.getlist("folders")
+        selected_folders = []
+        for f in raw_folders:
+            selected_folders.extend([x.strip() for x in f.split(",") if x.strip()])
         sort_by = request.args.get("sort_by", "filename")
         try:
             max_matches = int(request.args.get("max_matches_per_book", 0))
@@ -299,7 +302,10 @@ def api_search():
     except (ValueError, TypeError):
         offset, limit = 0, SEARCH_RESULTS_LIMIT
 
-    selected_folders = request.args.getlist("folders")
+    raw_folders = request.args.getlist("folders")
+    selected_folders = []
+    for f in raw_folders:
+        selected_folders.extend([x.strip() for x in f.split(",") if x.strip()])
     sort_by = request.args.get("sort_by", "filename")
     try:
         max_matches = int(request.args.get("max_matches_per_book", 0))

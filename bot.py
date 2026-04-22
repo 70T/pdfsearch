@@ -10,22 +10,29 @@ from discord.ext import commands
 from shared_utils import truncate_text, is_folder_allowed, get_instance_lock
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 # --- Configuration ---
 
-PDFSEARCH_BASE = "http://localhost:5001"
+PDFSEARCH_BASE = os.getenv("PDFSEARCH_BASE", "http://localhost:5001").rstrip("/")
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
+CF_CLIENT_ID = os.getenv("CF_CLIENT_ID", "")
+CF_CLIENT_SECRET = os.getenv("CF_CLIENT_SECRET", "")
 MATCHES_PER_PAGE = 3
 API_TIMEOUT = 15  # per individual HTTP request
 
 
 # --- Access Control ---
 
+
 def _parse_id_list(env_val: str) -> set[int]:
     if not env_val:
         return set()
-    return {int(x.strip()) for x in env_val.split(",") if x.strip().isdigit()}
+    return {
+        int(val)
+        for x in env_val.split(",")
+        if (val := x.strip().strip("'\"")).isdigit()
+    }
 
 
 ALLOWED_GUILDS: set[int] = _parse_id_list(os.getenv("ALLOWED_GUILDS", ""))
@@ -99,14 +106,30 @@ def _html_to_discord(text: str) -> str:
 
 # --- API Clients ---
 
+
 async def fetch_api(bot, endpoint, params=None):
     url = f"{bot.api_base}{endpoint}"
+    headers = {}
+    if CF_CLIENT_ID and CF_CLIENT_SECRET:
+        headers["CF-Access-Client-Id"] = CF_CLIENT_ID
+        headers["CF-Access-Client-Secret"] = CF_CLIENT_SECRET
+
     try:
         async with bot.session.get(
-            url, params=params, timeout=aiohttp.ClientTimeout(total=API_TIMEOUT)
+            url,
+            params=params,
+            headers=headers,
+            timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
         ) as resp:
             if resp.status == 200:
-                return await resp.json()
+                try:
+                    return await resp.json()
+                except Exception as je:
+                    text = await resp.text()
+                    logger.error(
+                        f"JSON Decode Error on {endpoint}: {je}. Response starts with: {text[:100]}"
+                    )
+                    return None
             else:
                 text = await resp.text()
                 logger.error(f"API Error {resp.status} on {endpoint}: {text[:200]}")
@@ -117,34 +140,37 @@ async def fetch_api(bot, endpoint, params=None):
 
 # --- Discord UI Components ---
 
+
 class BookSelect(discord.ui.Select):
     def __init__(self, book_page_map):
+        # Convert map items to a list to use index-based unique values
+        self.ordered_books = list(book_page_map.items())[:25]
         options = [
-            discord.SelectOption(label=truncate_text(t, 100), value=str(idx))
-            for t, idx in list(book_page_map.items())[:25]
+            discord.SelectOption(label=truncate_text(t, 100), value=str(i))
+            for i, (t, idx) in enumerate(self.ordered_books)
         ]
         super().__init__(placeholder="Jump to book...", options=options)
 
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
 
-        idx = int(self.values[0])
-        self.view.current = idx
+        # Look up the page index using the selected index
+        book_idx = int(self.values[0])
+        _, page_idx = self.ordered_books[book_idx]
+
+        self.view.current = page_idx
         self.view._sync_buttons()
 
         await interaction.edit_original_response(
-            embed=self.view.embeds[idx], view=self.view
+            embed=self.view.embeds[page_idx], view=self.view
         )
 
 
 class PaginationView(discord.ui.View):
-    def __init__(self, bot, embeds, book_page_map, page_metadata, query, invoker_id):
+    def __init__(self, embeds, book_page_map, invoker_id):
         super().__init__(timeout=180)
-        self.bot = bot
         self.embeds = embeds
         self.current = 0
-        self.page_metadata = page_metadata
-        self.query = query
         self.invoker_id = invoker_id
         if len(book_page_map) > 1:
             self.add_item(BookSelect(book_page_map))
@@ -153,7 +179,7 @@ class PaginationView(discord.ui.View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.invoker_id:
             await interaction.response.send_message(
-                "Keep your hands off! These search results belong to someone else. Run `/search` to get your own.",
+                "Keep your hands off! These search results belong to someone else.",
                 ephemeral=True,
             )
             return False
@@ -188,51 +214,19 @@ class PaginationView(discord.ui.View):
         )
 
     @discord.ui.button(
-        label="Get Context", style=discord.ButtonStyle.primary, custom_id="rich"
+        label="Snippets Loaded",
+        style=discord.ButtonStyle.primary,
+        custom_id="loaded",
+        disabled=True,
     )
-    async def rich_button(
+    async def loaded_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
-        await interaction.response.defer(ephemeral=True)
-
-        meta = self.page_metadata[self.current]
-        params = {
-            "file_id": meta["file_id"],
-            "page": meta["page"],
-            "q": self.query,
-        }
-
-        data = await fetch_api(self.bot, "/snippet", params)
-
-        if data and data.get("snippet"):
-            snippet = _html_to_discord(data["snippet"])
-            title = meta["filename"]
-            page = meta["page"]
-
-            # Construct the deep link to the file viewer
-            view_url = f"{self.bot.api_base}/view/{meta['file_id']}#page={page}"
-
-            # Create a nice rich context embed
-            embed = discord.Embed(
-                title=f"Context: {title}",
-                description=snippet,
-                color=discord.Color.blurple(),
-                url=view_url,
-            )
-            embed.set_footer(text=f"Page {page}")
-
-            if meta.get("chapter"):
-                embed.add_field(name="Chapter", value=meta["chapter"], inline=False)
-
-            # Use a separate follow-up so it's only visible to the clicking user
-            await interaction.followup.send(embed=embed, ephemeral=True)
-        else:
-            await interaction.followup.send(
-                "Could not retrieve extended context for this page.", ephemeral=True
-            )
+        pass
 
 
 # --- Discord Bot Client ---
+
 
 class PDFSearchBot(commands.Bot):
     def __init__(self):
@@ -244,11 +238,31 @@ class PDFSearchBot(commands.Bot):
 
     async def setup_hook(self):
         self.session = aiohttp.ClientSession()
-        # Register slash commands globally
+        # Register slash commands globally and sync to specific guilds for immediate update
+        logger.info(f"Syncing commands for guilds: {ALLOWED_GUILDS}")
+        if not ALLOWED_GUILDS:
+            logger.warning(
+                "No ALLOWED_GUILDS found in environment. Commands may not be available in guilds."
+            )
+
         for guild_id in ALLOWED_GUILDS:
-            guild = discord.Object(id=guild_id)
-            self.tree.copy_global_to(guild=guild)
-            await self.tree.sync(guild=guild)
+            try:
+                guild = discord.Object(id=guild_id)
+                self.tree.clear_commands(
+                    guild=guild
+                )  # Clear specific guild commands to avoid signature duplicates
+                self.tree.copy_global_to(guild=guild)
+                synced = await self.tree.sync(guild=guild)
+                logger.info(f"Synced {len(synced)} commands to guild {guild_id}")
+            except Exception as e:
+                logger.error(f"Failed to sync commands for guild {guild_id}: {e}")
+
+        # Also sync globally for backup
+        try:
+            await self.tree.sync()
+            logger.info("Global command sync complete.")
+        except Exception as e:
+            logger.error(f"Global sync failed: {e}")
 
     async def on_ready(self):
         logger.info(f"Logged in as {self.user} (ID: {self.user.id})")
@@ -264,6 +278,7 @@ bot = PDFSearchBot()
 
 
 # --- Slash Commands ---
+
 
 @bot.tree.command(name="search", description="Search the PDF library for a phrase.")
 @app_commands.describe(
@@ -313,14 +328,14 @@ async def search(
         selected = get_allowed_folders_for_interaction(interaction)
 
     params = {
-        "q": query,
+        "search_query": query,
         "limit": 50,
-        "sort": sort,
+        "sort_by": sort,
     }
     if selected:
         params["folders"] = ",".join(selected)
 
-    data = await fetch_api(bot, "/search", params)
+    data = await fetch_api(bot, "/api/search", params)
 
     if not data or not data.get("results"):
         await interaction.followup.send(
@@ -332,49 +347,78 @@ async def search(
     total_books = data.get("total_books", 0)
     total_pages = data.get("total_pages", 0)
 
-    # Build embeds for pagination
-    embeds = []
-    page_metadata = []  # To store file_id/page for context retrieval
-    book_page_map = {}  # To allow jumping to specific books
+    # Build text blocks for 3 matches per embed
+    page_blocks = []
+    current_match_blocks = []
+    book_page_map = {}  # For Jump to book select menu
 
-    for i, (filename, path, matches, book_total) in enumerate(results):
-        # Record the start index for this book in the embeds list
-        book_page_map[filename] = len(embeds)
+    for entry in results:
+        filename = entry["filename"]
+        rel_path = entry["relative_path"]
+        matches = entry["matches"]
+        book_total = entry["match_count"]
 
-        for match in matches:
-            embed = discord.Embed(
-                title=filename,
-                description=_html_to_discord(match["snippet"]),
-                color=discord.Color.blue(),
-                url=f"{PDFSEARCH_BASE}/view/{match['file_id']}#page={match['page']}",
-            )
-            embed.set_author(name=f"Search Query: {query}")
+        # Record start page for this book
+        if filename not in book_page_map:
+            book_page_map[filename] = len(page_blocks)
+
+        # Get folder path (e.g. Star Wars/Legends)
+        folder = os.path.dirname(rel_path).replace("\\", "/")
+
+        for i, match in enumerate(matches, 1):
+            match_header = f"**[{folder}] {filename} ({i}/{book_total})**"
+            page_info = f"Page {match['page']}"
             if match.get("chapter"):
-                embed.add_field(name="Chapter", value=match["chapter"], inline=False)
+                page_info += f" - {match['chapter']}"
 
-            footer_text = f"Result {len(embeds) + 1} | Page {match['page']} of {filename}"
-            if book_total > len(matches):
-                footer_text += f" ({book_total} total matches in book)"
-            embed.set_footer(text=footer_text)
+            snippet_text = _html_to_discord(match["snippet"])
+            quoted_snippet = "\n".join(f"> {line}" for line in snippet_text.split("\n"))
 
-            embeds.append(embed)
-            page_metadata.append(
-                {
-                    "file_id": match["file_id"],
-                    "page": match["page"],
-                    "filename": filename,
-                    "chapter": match.get("chapter"),
-                }
-            )
+            block = f"{match_header}\n{page_info}\n{quoted_snippet}"
+            current_match_blocks.append(block)
 
-    view = PaginationView(
-        bot, embeds, book_page_map, page_metadata, query, interaction.user.id
-    )
+            if len(current_match_blocks) >= MATCHES_PER_PAGE:
+                page_blocks.append("\n\n".join(current_match_blocks))
+                current_match_blocks = []
+
+    if current_match_blocks:
+        page_blocks.append("\n\n".join(current_match_blocks))
+
+    if not page_blocks:
+        await interaction.followup.send(f"No matches found for: `{query}`")
+        return
+
+    # Build final embeds
+    embeds = []
+    header_info = f'Search: "{query}"\nFound {total_pages} total match(es) across {total_books} book(s)\n\n'
+
+    for i, p in enumerate(page_blocks):
+        footer_text = f"Page {i + 1} of {len(page_blocks)} - PDFSearch bot by miro - check /help for instructions"
+
+        # Grey color to match Discord's background (0x2b2d31 or slightly lighter)
+        # Using 0x2c2f33 which is a common Discord dark grey.
+        embed = discord.Embed(
+            description=f"{header_info}{p}\n\n{footer_text}", color=0x2B2D31
+        )
+        embeds.append(embed)
+
+    view = PaginationView(embeds, book_page_map, interaction.user.id)
     await interaction.followup.send(
-        content=f"Found **{total_pages}** matches across **{total_books}** books.",
         embed=embeds[0],
         view=view,
     )
+
+
+@search.autocomplete("folders")
+async def search_folders_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    allowed = get_allowed_folders_for_interaction(interaction)
+    return [
+        app_commands.Choice(name=f, value=f)
+        for f in allowed
+        if current.lower() in f.lower()
+    ][:25]
 
 
 # --- Application Entry Point ---
