@@ -60,8 +60,8 @@ class TestSortingFeature(BaseSortingTest):
         # Assertion
         self.assertIsNone(error)
         self.assertEqual(len(results), 2)
-        self.assertEqual(results[0][0], "A_file.pdf")
-        self.assertEqual(results[1][0], "B_file.pdf")
+        self.assertEqual(results[0][0], "A_file")
+        self.assertEqual(results[1][0], "B_file")
 
     def test_sort_by_relevance(self):
         """Verify explicit sort by relevance (match count)."""
@@ -80,5 +80,5 @@ class TestSortingFeature(BaseSortingTest):
         # Assertion: B should be first because it has more matches
         self.assertIsNone(error)
         self.assertEqual(len(results), 2)
-        self.assertEqual(results[0][0], "B_file.pdf")
-        self.assertEqual(results[1][0], "A_file.pdf")
+        self.assertEqual(results[0][0], "B_file")
+        self.assertEqual(results[1][0], "A_file")

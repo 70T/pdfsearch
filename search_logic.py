@@ -567,6 +567,7 @@ def perform_search(
 
         for row in db_results:
             rowid, file_id, filename, relative_path, page_num, page_text = row
+            filename = filename.removesuffix(".pdf")
             lower_page = page_text.lower()
             approx_pos = next(
                 (m.start() for p in matchers if (m := p.search(lower_page))), None

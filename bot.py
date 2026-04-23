@@ -84,6 +84,8 @@ logger = logging.getLogger(__name__)
 # Regex Patterns
 RE_HTML_BOLD = re.compile(r"<b>(.*?)</b>", re.DOTALL)
 RE_HTML_TAGS = re.compile(r"<[^>]+>")
+RE_MD_ESCAPE = re.compile(r"([\\*_~`>#])")
+RE_BOLD_PLACEHOLDERS = re.compile(r"[\x01\x02]")
 
 
 def _html_to_discord(text: str) -> str:
@@ -94,11 +96,9 @@ def _html_to_discord(text: str) -> str:
     # 2. Unescape HTML (converts &lt; to <, etc)
     text = html.unescape(text)
     # 3. Escape Markdown special characters
-    # Note: escape backslash first to avoid double-escaping
-    for char in ["\\", "*", "_", "~", "`", ">", "#"]:
-        text = text.replace(char, "\\" + char)
+    text = RE_MD_ESCAPE.sub(r"\\\1", text)
     # 4. Restore our highlight tags as Discord bold
-    text = text.replace("\x01", "**").replace("\x02", "**")
+    text = RE_BOLD_PLACEHOLDERS.sub("**", text)
     # 5. Remove any remaining HTML tags
     text = RE_HTML_TAGS.sub("", text)
     return text.strip()
@@ -390,7 +390,7 @@ async def search(
 
     # Build final embeds
     embeds = []
-    header_info = f'Search: "{query}"\nFound {total_pages} total match(es) across {total_books} book(s)\n\n'
+    header_info = f'**Search:** "{query}"\n**Found** {total_pages} total match(es) across {total_books} book(s)\n\n'
 
     for i, p in enumerate(page_blocks):
         footer_text = f"Page {i + 1} of {len(page_blocks)} - PDFSearch bot by miro - check /help for instructions"

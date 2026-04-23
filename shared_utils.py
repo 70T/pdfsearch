@@ -1,4 +1,5 @@
 import re
+from functools import lru_cache
 
 # --- Configuration ---
 # --- OCR Exemptions ---
@@ -74,6 +75,7 @@ RE_GLUED_CONTRACTION = re.compile(
 _NATURAL_SORT_SPLIT_RE = re.compile(r"(\d+)")
 
 
+@lru_cache(maxsize=1024)
 def natural_sort_key(s):
     # Create a sort key for natural sorting (e.g., '2' before '10').
     # Splits the string into a list of strings and numbers.
@@ -152,8 +154,8 @@ GARBAGE_PATTERNS_OCR_CHECK = (
 RE_NON_STANDARD_WHITESPACE = re.compile(r"[^\S\n]+")
 RE_MULTIPLE_SPACES = re.compile(r" +")
 RE_SPACED_ELLIPSIS = re.compile(r"\.(?:\s+\.){2,}")
-# Spaced out text detection (s o m e t e x t)
-RE_SPACED_TEXT_CHECK = re.compile(r"\b\w\s")
+# Spaced out text detection (s o m e t e x t) - Requires at least 3 chars separated by spaces
+RE_SPACED_TEXT_CHECK = re.compile(r"\b\w\s\w\s\w\b")
 RE_SPACED_TEXT_FIX = re.compile(r"(?<=\b\w) (?=\w\b)")
 RE_OPEN_QUOTE_SPACE_FIX = re.compile(r"((?:^|(?<=\s))[\u2018\u201c'\"])\s+(?=\w)")
 # Remove stray space before closing single quote (common OCR artifact in dialogue)
@@ -181,6 +183,7 @@ RE_URL_PROTECT = re.compile(r"((?:https?://|www\.)[^\s\[\](){}]+)", re.IGNORECAS
 # --- Entities ---
 # Protects HTML entities from being mangled by punctuation spacing rules.
 RE_ENTITY_PROTECT = re.compile(r"(&[a-z0-9#]{2,10};)", re.IGNORECASE)
+RE_SURROGATES = re.compile(r"[\uD800-\uDFFF]")
 # --- OCR Artifact Fixes ---
 RE_FNE_FIX = re.compile(r"\bfne\b")
 RE_STUS_FIX = re.compile(r"\bstus\b")
@@ -577,37 +580,40 @@ def apply_display_fixes(text):
     text = RE_FNE_FIX.sub("fine", text)
     text = RE_STUS_FIX.sub("stuff", text)
     # -- Phase 1: Contraction & possessive repair --
-    # 1a. Fix glued contractions using the combined high-performance regex (e.g. "that'sa" -> "that's a")
-    text = RE_GLUED_CONTRACTION.sub(r"\1'\2 \3", text)
-    # 1b. Fix possessive "s" glued to next word (e.g. parents'The -> parents' The)
-    text = RE_POSSESSIVE_S_FIX.sub(r"\1' \2", text)
-    # 2 & 3. Join contractions/possessives split by space after apostrophe (e.g. Don' t -> Don't, Cortnay' s -> Cortnay's)
-    # Note: RE_CONTRACTION_SPACE_FIX explicitly covers all possessive subsets implicitly.
-    text = RE_CONTRACTION_SPACE_FIX.sub(r"\1'\2", text)
-    # 4. Fix space BEFORE apostrophe (e.g. John 's -> John's, Don 't -> Don't)
-    text = RE_SPACE_BEFORE_APOSTROPHE.sub(r"\1'\2", text)
+    if "'" in text:
+        # 1a. Fix glued contractions using the combined high-performance regex (e.g. "that'sa" -> "that's a")
+        text = RE_GLUED_CONTRACTION.sub(r"\1'\2 \3", text)
+        # 1b. Fix possessive "s" glued to next word (e.g. parents'The -> parents' The)
+        text = RE_POSSESSIVE_S_FIX.sub(r"\1' \2", text)
+        # 2 & 3. Join contractions/possessives split by space after apostrophe (e.g. Don' t -> Don't, Cortnay' s -> Cortnay's)
+        # Note: RE_CONTRACTION_SPACE_FIX explicitly covers all possessive subsets implicitly.
+        text = RE_CONTRACTION_SPACE_FIX.sub(r"\1'\2", text)
+        # 4. Fix space BEFORE apostrophe (e.g. John 's -> John's, Don 't -> Don't)
+        text = RE_SPACE_BEFORE_APOSTROPHE.sub(r"\1'\2", text)
+        # 5. Remove stray space before closing single quote (e.g. Europa, ' said -> Europa,' said)
+        text = RE_SPACE_BEFORE_CLOSE_QUOTE.sub(r"\1'", text)
+
     # -- Phase 2: Quote spacing normalization --
-    # 5. Remove stray space before closing single quote (e.g. Europa, ' said -> Europa,' said)
-    text = RE_SPACE_BEFORE_CLOSE_QUOTE.sub(r"\1'", text)
-    # 6. Remove space after opening quote (e.g. " What" -> "What", ' What -> 'What)
-    text = RE_OPEN_QUOTE_SPACE_FIX.sub(r"\1", text)
-    # 7. Remove space before closing quote (e.g. Word ' -> Word')
-    text = RE_CLOSE_QUOTE_SPACE_FIX.sub(r"\1", text)
-    # 8. Add space around single quotes at word/punctuation boundaries (broad rule)
-    #    8a. Punct+'I -> Punct. 'I (space before quote for openers after punctuation)
-    text = RE_SINGLE_QUOTE_SPACER_BEFORE.sub(r" '", text)
-    #    8b. Smart Quote & Dialogue Normalization (State-based)
-    text = _normalize_quotes_smart(text)
-    # Handle remaining single quote spacing
-    text = RE_COMMA_SINGLE_QUOTE_SPACE.sub(r"\1' ", text)
-    text = RE_PUNCT_SINGLE_QUOTE_SPACE.sub(r"\1' ", text)
-    text = RE_DOT_COMMA_QUOTE_LOWERCASE.sub(r'\1 "', text)
-    text = RE_JOINED_DOUBLE_QUOTES.sub(r'\1" "', text)
-    text = RE_JOINED_SINGLE_QUOTES.sub(r"\1' '", text)
-    # Generic close-quote spacer (only if straight quotes remain)
-    if '"' in text:
-        text = RE_CLOSE_QUOTE_SPACE.sub(r"\1 ", text)
-    text = RE_CLOSE_SINGLE_QUOTE_SPACE.sub(r"\1 ", text)
+    if "'" in text or '"' in text:
+        # 6. Remove space after opening quote (e.g. " What" -> "What", ' What -> 'What)
+        text = RE_OPEN_QUOTE_SPACE_FIX.sub(r"\1", text)
+        # 7. Remove space before closing quote (e.g. Word ' -> Word')
+        text = RE_CLOSE_QUOTE_SPACE_FIX.sub(r"\1", text)
+        # 8. Add space around single quotes at word/punctuation boundaries (broad rule)
+        #    8a. Punct+'I -> Punct. 'I (space before quote for openers after punctuation)
+        text = RE_SINGLE_QUOTE_SPACER_BEFORE.sub(r" '", text)
+        #    8b. Smart Quote & Dialogue Normalization (State-based)
+        text = _normalize_quotes_smart(text)
+        # Handle remaining single quote spacing
+        if "'" in text:
+            text = RE_COMMA_SINGLE_QUOTE_SPACE.sub(r"\1' ", text)
+            text = RE_PUNCT_SINGLE_QUOTE_SPACE.sub(r"\1' ", text)
+            text = RE_CLOSE_SINGLE_QUOTE_SPACE.sub(r"\1 ", text)
+        if '"' in text:
+            text = RE_DOT_COMMA_QUOTE_LOWERCASE.sub(r'\1 "', text)
+            text = RE_CLOSE_QUOTE_SPACE.sub(r"\1 ", text)
+        text = RE_JOINED_DOUBLE_QUOTES.sub(r'\1" "', text)
+        text = RE_JOINED_SINGLE_QUOTES.sub(r"\1' '", text)
     # -- Phase 3: Dialogue Cleanup --
     # 9. Fix quote-period swap (e.g. Word'. Next -> Word. 'Next)
     #    Restored and refined to only swap when followed by a capital letter (start of new sentence).
@@ -654,8 +660,13 @@ def strip_surrogates(text):
     Remove surrogate characters (U+D800 to U+DFFF) from a string.
     These are invalid in UTF-8 and cause errors when saving to SQLite.
     """
-    if not isinstance(text, str):
+    if not isinstance(text, str) or not text:
         return text
+    # Optimization: Only clean if surrogates are actually present.
+    # The encode/decode cycle is expensive for large text blocks.
+    if not RE_SURROGATES.search(text):
+        return text.replace("\ufffd", "") if "\ufffd" in text else text
+
     # The 'ignore' error handler with utf-8 encoding/decoding is a standard
     # way to strip these invalid characters in Python.
     cleaned = text.encode("utf-8", "ignore").decode("utf-8")

@@ -81,7 +81,9 @@ class TestRoutes(BaseRouteTest):
 
         response = self.client.get("/?search_query=emperor")
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"found.pdf", response.data)
+        # The visible filename should be clean, but the path metadata should still have .pdf
+        self.assertIn(b"found", response.data)
+        self.assertIn(b"folder/found.pdf", response.data)
 
     def test_back_to_search_link(self):
         """Results page should have a 'Back to Search' link pointing to /."""
