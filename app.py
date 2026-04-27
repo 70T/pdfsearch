@@ -510,7 +510,7 @@ def index_builder():
         return render_template(
             "index_builder.html",
             currently_indexed_files=currently_indexed_files,
-            indexing_active=False,
+            indexing_active=True,
         )
 
     currently_indexed_files = sorted(

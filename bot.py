@@ -257,12 +257,8 @@ class PDFSearchBot(commands.Bot):
             except Exception as e:
                 logger.error(f"Failed to sync commands for guild {guild_id}: {e}")
 
-        # Also sync globally for backup
-        try:
-            await self.tree.sync()
-            logger.info("Global command sync complete.")
-        except Exception as e:
-            logger.error(f"Global sync failed: {e}")
+        # Note: Global sync is omitted here to prevent duplicates in guilds where we manually sync.
+        # If you want global commands (with 1-hour propagation), use self.tree.sync() instead of the guild loop above.
 
     async def on_ready(self):
         logger.info(f"Logged in as {self.user} (ID: {self.user.id})")
@@ -390,7 +386,7 @@ async def search(
 
     # Build final embeds
     embeds = []
-    header_info = f'**Search:** "{query}"\n**Found** {total_pages} total match(es) across {total_books} book(s)\n\n'
+    header_info = f'**Searched for:** "{query}"\n**Found:** {total_pages} total match(es) in {total_books} book(s)\n\n'
 
     for i, p in enumerate(page_blocks):
         footer_text = f"Page {i + 1} of {len(page_blocks)} - PDFSearch bot by miro - check /help for instructions"
@@ -419,6 +415,28 @@ async def search_folders_autocomplete(
         for f in allowed
         if current.lower() in f.lower()
     ][:25]
+
+
+@bot.tree.command(name="help", description="How to use the PDFSearch bot.")
+async def help_cmd(interaction: discord.Interaction):
+    help_text = (
+        "**PDFSearch Bot**\n\n"
+        "This bot is a whitelisted frontend for a private, self-hosted PDF search engine by miro. It does not grant access to any media outside of snippets. Use `/search` to find phrases within the PDF library.\n\n"
+        "**Parameters:**\n"
+        '`query`: The term or phrase you\'re looking for. Use "double quotes" for exact phrase matches.\n'
+        "`sort`: (Optional) Choose to sort by `Filename` or `Relevance`. Default is Filename.\n"
+        "`folders`: (Optional) Restrict your search to specific folders (e.g., 'Star Wars'). Autocomplete will help you find allowed folders.\n\n"
+        "The bot returns up to 50 results, paginated 3 per embed.\n"
+        "Use the 'Jump to book' dropdown to quickly navigate between different files.\n"
+        "Only users and servers on the whitelist can use this bot.\n"
+        "Jumbled results are caused by OCR noise or poor PDF formatting."
+    )
+    embed = discord.Embed(
+        title="PDFSearch Help",
+        description=help_text,
+        color=0x2B2D31,
+    )
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 # --- Application Entry Point ---

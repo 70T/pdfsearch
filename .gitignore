@@ -30,3 +30,4 @@ ENV/
 
 # Agent
 .agent/
+tools/library_catalog.txt

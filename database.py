@@ -44,7 +44,7 @@ def get_db(db_name):
         if "_db_conn" not in g:
             g._db_conn = _get_conn(db_name)
         return g._db_conn
-    except RuntimeError:
+    except (RuntimeError, ImportError):
         # Outside Flask request context (worker processes, CLI scripts).
         # Reuse the existing connection if db_name matches; otherwise close and reconnect.
         conn = getattr(_worker_local, "conn", None)
@@ -68,7 +68,7 @@ def close_db(e=None):
         conn = g.pop("_db_conn", None)
         if conn is not None:
             conn.close()
-    except RuntimeError:
+    except (RuntimeError, ImportError):
         pass
 
 

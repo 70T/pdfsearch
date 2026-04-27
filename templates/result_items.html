@@ -9,7 +9,6 @@
     <div class="action-buttons">
         {# Main link opens the document at page 1 #}
         {% set browser_link = generate_browser_link(relative_path, 1) %}
-
         {% if browser_link %}
         <a href="{{ browser_link }}" target="_blank" class="action-btn primary-btn">
             View in Browser
@@ -26,8 +25,12 @@
         <div class="match-item">
             <div class="match-header">
                 {% set page_link = generate_browser_link(relative_path, match.page) %}
+                {% if page_link %}
                 <a href="{{ page_link }}" target="_blank" class="page-number" title="Open page {{ match.page }}">Page {{
                     match.page }}</a>
+                {% else %}
+                <span class="page-number">Page {{ match.page }}</span>
+                {% endif %}
                 {% if match.chapter %}
                 <span class="page-number chapter-label">
                     {{ match.chapter }}

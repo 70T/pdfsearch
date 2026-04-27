@@ -148,8 +148,6 @@ def _compile_offset_patterns(terms_tuple):
     return tuple(compiled)
 
 
-    return tuple(compiled)
-
 
 # --- Relevance Filtering ---
 
