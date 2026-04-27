@@ -36,7 +36,7 @@ def analyze_file(file_path):
 
     full_text_sample = ""
     for p_idx in pages_to_check:
-        full_text_sample += doc[p_idx].get_text() + " "
+        full_text_sample += str(doc[p_idx].get_text()) + " "
 
     # Check Stop Words
     words = re.findall(r"\b[a-z]+\b", full_text_sample.lower())

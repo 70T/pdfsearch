@@ -641,6 +641,10 @@ def perform_search(
                     grouped_results[relative_path]["total_matches"] = (
                         book_total_map.get(file_id, 0)
                     )
+                    
+                    if not isinstance(grouped_results[relative_path]["matches"], list):
+                        grouped_results[relative_path]["matches"] = []
+                        
                     grouped_results[relative_path]["matches"].append(
                         {
                             "page": page_num,
@@ -651,7 +655,8 @@ def perform_search(
                     )
 
         for path in grouped_results:
-            grouped_results[path]["matches"].sort(key=lambda m: m["page"])
+            if isinstance(grouped_results[path]["matches"], list):
+                grouped_results[path]["matches"].sort(key=lambda m: m["page"])
         processed_results = [
             (data["filename"], path, data["matches"], data["total_matches"])
             for path, data in grouped_results.items()

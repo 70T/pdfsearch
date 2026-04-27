@@ -137,10 +137,9 @@ def _build_base_cmd(enhance):
 
 def _run_ocrmypdf(cmd):
     """Run a command, returning the CompletedProcess. Low priority on Windows."""
-    kwargs = {"capture_output": True, "text": True}
     if sys.platform == "win32":
-        kwargs["creationflags"] = 0x00004000  # BELOW_NORMAL_PRIORITY_CLASS
-    return subprocess.run(cmd, **kwargs)
+        return subprocess.run(cmd, capture_output=True, text=True, creationflags=0x00004000)
+    return subprocess.run(cmd, capture_output=True, text=True)
 
 
 def process_file_list(list_file, ocr_args, enhance=False):

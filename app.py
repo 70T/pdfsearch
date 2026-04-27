@@ -268,9 +268,13 @@ def search_form():
 def api_snippets():
     """Generate a snippet for a specific file and page on demand."""
     db_name = app.config["DATABASE"]
+    file_id_str = request.args.get("file_id")
+    page_num_str = request.args.get("page_num")
+    if file_id_str is None or page_num_str is None:
+        return jsonify({"error": "Invalid parameters"}), 400
     try:
-        file_id = int(request.args.get("file_id"))
-        page_num = int(request.args.get("page_num"))
+        file_id = int(file_id_str)
+        page_num = int(page_num_str)
         search_query = request.args.get("search_query", "")
     except (ValueError, TypeError):
         return jsonify({"error": "Invalid parameters"}), 400

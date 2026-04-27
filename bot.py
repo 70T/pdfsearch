@@ -158,6 +158,7 @@ class BookSelect(discord.ui.Select):
         book_idx = int(self.values[0])
         _, page_idx = self.ordered_books[book_idx]
 
+        assert self.view is not None, "Select must be attached to a view"
         self.view.current = page_idx
         self.view._sync_buttons()
 

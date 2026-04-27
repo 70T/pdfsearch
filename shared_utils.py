@@ -712,11 +712,8 @@ def get_instance_lock(lock_name):
     import sys
 
     # Use the script's directory for the lock file
-    script_dir = os.path.dirname(
-        os.path.abspath(
-            sys.modules["__main__"].__file__ if "__main__" in sys.modules else __file__
-        )
-    )
+    script_file = sys.modules["__main__"].__file__ if "__main__" in sys.modules and getattr(sys.modules["__main__"], "__file__", None) else __file__
+    script_dir = os.path.dirname(os.path.abspath(str(script_file)))
     lock_path = os.path.join(script_dir, f"{lock_name}.lock")
     f = None
     try:
