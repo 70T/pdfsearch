@@ -80,10 +80,10 @@ class TestUXFeatures(BaseUXTest):
     def test_partial_results_route(self):
         """/search_results_partial should return result items HTML."""
         # Setup data
-        file_id = db.add_or_update_file(
-            self.db_path, "test.pdf", "test.pdf", 1000.0, "h1"
+        db.commit_indexed_pdf(
+            self.db_path, "test.pdf", "test.pdf", 1000.0, "h1",
+            pages=[(1, "unique_term")], chapters=[],
         )
-        db.bulk_insert_pages(self.db_path, file_id, [(1, "unique_term")])
 
         response = self.client.get("/search_results_partial?search_query=unique_term")
         self.assertEqual(response.status_code, 200)
@@ -100,11 +100,10 @@ class TestUXFeatures(BaseUXTest):
     def test_rendering_match_dicts(self):
         """Regression test: Ensure templates handle match dicts correctly."""
         # Setup data
-        file_id = db.add_or_update_file(
-            self.db_path, "dict_test.pdf", "dict_test.pdf", 1000.0, "h1"
+        db.commit_indexed_pdf(
+            self.db_path, "dict_test.pdf", "dict_test.pdf", 1000.0, "h1",
+            pages=[(5, "page 5 content")], chapters=[],
         )
-        # match structure is handled by search_logic, but here we insert data that search_logic will retrieve.
-        db.bulk_insert_pages(self.db_path, file_id, [(5, "page 5 content")])
 
         # Configure FILES_DIRECTORY so browser link matches are generated
         self.client.application.config["FILES_DIRECTORY"] = "/tmp/test_pdfs"
@@ -123,11 +122,9 @@ class TestUXFeatures(BaseUXTest):
     def test_api_snippets(self):
         """Test the /api/snippets endpoint."""
         # Setup data
-        file_id = db.add_or_update_file(
-            self.db_path, "snippet_test.pdf", "snippet_test.pdf", 1000.0, "h1"
-        )
-        db.bulk_insert_pages(
-            self.db_path, file_id, [(1, "This is a test snippet content.")]
+        file_id = db.commit_indexed_pdf(
+            self.db_path, "snippet_test.pdf", "snippet_test.pdf", 1000.0, "h1",
+            pages=[(1, "This is a test snippet content.")], chapters=[],
         )
 
         # Call API

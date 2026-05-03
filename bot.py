@@ -38,9 +38,9 @@ def _parse_id_list(env_val: str) -> set[int]:
 ALLOWED_GUILDS: set[int] = _parse_id_list(os.getenv("ALLOWED_GUILDS", ""))
 ALLOWED_USERS: set[int] = _parse_id_list(os.getenv("ALLOWED_USERS", ""))
 ALLOWED_FOLDERS = [
-    "Star Wars",
-    "ASOIAF",
-    "Warhammer",
+    f.strip()
+    for f in os.getenv("ALLOWED_FOLDERS", "").split(",")
+    if f.strip()
 ]
 
 # Folder Whitelists
@@ -129,10 +129,14 @@ async def fetch_api(bot, endpoint, params=None):
                     logger.error(
                         f"JSON Decode Error on {endpoint}: {je}. Response starts with: {text[:100]}"
                     )
-                    return None
+                    return {"error": "Invalid response from search backend."}
             else:
                 text = await resp.text()
                 logger.error(f"API Error {resp.status} on {endpoint}: {text[:200]}")
+                return {"error": f"Search backend returned status {resp.status}."}
+    except aiohttp.ClientError as e:
+        logger.error(f"API connection error on {endpoint}: {e}")
+        return {"error": "Could not reach the search backend."}
     except Exception as e:
         logger.error(f"API Error on {endpoint}: {e}")
     return None
@@ -333,6 +337,12 @@ async def search(
         params["folders"] = ",".join(selected)
 
     data = await fetch_api(bot, "/api/search", params)
+
+    if data and data.get("error"):
+        await interaction.followup.send(
+            f"Search error: {data['error']}", ephemeral=True
+        )
+        return
 
     if not data or not data.get("results"):
         await interaction.followup.send(

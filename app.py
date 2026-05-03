@@ -98,6 +98,7 @@ def set_security_headers(response):
 
 
 SEARCH_RESULTS_LIMIT = 20
+API_SEARCH_LIMIT_MAX = 100
 
 
 # --- Indexing Manager ---
@@ -301,7 +302,7 @@ def api_search():
         offset = max(0, int(request.args.get("offset", 0)))
         limit = min(
             max(1, int(request.args.get("limit", SEARCH_RESULTS_LIMIT))),
-            SEARCH_RESULTS_LIMIT,
+            API_SEARCH_LIMIT_MAX,
         )
     except (ValueError, TypeError):
         offset, limit = 0, SEARCH_RESULTS_LIMIT
@@ -796,7 +797,8 @@ def _run_indexing(db_name, path_input, files_dir):
         with _indexing_lock:
             _indexing_state["running"] = False
             _indexing_state["done"] = True
-            _indexing_state["error"] = str(e)
+            _indexing_state["error"] = f"Indexing failed during setup: {e}"
+            _indexing_state["current_file"] = ""
 
 
 @app.route("/index/status")

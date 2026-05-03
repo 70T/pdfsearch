@@ -366,48 +366,6 @@ def check_db_has_content(db_name):
 # --- Batch Insertion ---
 
 
-def bulk_insert_pages(db_name, file_id, page_data_list):
-    """Insert multiple pages of PDF data in a single transaction.
-
-    Args:
-        db_name: Path to the SQLite database file.
-        file_id: ID of the file from the 'files' table.
-        page_data_list: List of (page_num, text) tuples.
-    """
-    if not page_data_list:
-        return
-
-    # Add file_id to each page tuple for insertion.
-    full_page_data = clean_db_string(
-        [(file_id, page_num, text) for page_num, text in page_data_list]
-    )
-
-    conn = get_db(db_name)
-    with conn:
-        cursor = conn.cursor()
-        cursor.executemany(
-            "INSERT INTO pdf_text_fts (file_id, page_num, text) VALUES (?, ?, ?)",
-            full_page_data,
-        )
-        # Keep shadow table in sync.
-        cursor.execute(
-            "INSERT OR REPLACE INTO pages (file_id, page_num, rowid_fts) "
-            "SELECT file_id, page_num, rowid FROM pdf_text_fts WHERE file_id = ?",
-            (file_id,),
-        )
-
-
-def insert_file_chapters(db_name, file_id, chapters):
-    """Insert chapter metadata for a file.
-    chapters is a list of (page_num, title, level) tuples."""
-    if not chapters:
-        return
-    data = clean_db_string([(file_id, p, t, level) for p, t, level in chapters])
-    sql = "INSERT INTO chapters (file_id, page_num, title, level) VALUES (?, ?, ?, ?)"
-    conn = get_db(db_name)
-    with conn:
-        conn.executemany(sql, data)
-
 
 def get_chapters_for_files(db_name, file_ids):
     """Batch-fetch all chapter data for a set of file IDs in one query.
@@ -552,23 +510,6 @@ def commit_indexed_pdfs_batch(db_name, batch_data):
                 )
 
 
-def add_or_update_file(db_name, filename, relative_path, last_modified, file_hash=None):
-    """Add a file to the 'files' table or update its timestamp. Returns the file's ID."""
-    sql = """INSERT INTO files (filename, relative_path, last_modified, file_hash) VALUES (?, ?, ?, ?)
-             ON CONFLICT(relative_path) DO UPDATE SET last_modified=excluded.last_modified, file_hash=excluded.file_hash"""
-    conn = get_db(db_name)
-    with conn:
-        cursor = conn.cursor()
-        params = clean_db_string((filename, relative_path, last_modified, file_hash))
-        cursor.execute(sql, params)
-        # Return the correct id for both INSERT and UPDATE paths
-        cursor.execute(
-            "SELECT id FROM files WHERE relative_path = ?",
-            (clean_db_string(relative_path),),
-        )
-        row = cursor.fetchone()
-        return row[0] if row else None
-
 
 def get_files_by_hash(db_name, file_hash):
     """Find files with a matching hash. Used for rename detection."""
@@ -609,16 +550,29 @@ def delete_file(db_name, relative_path):
 def wipe_db(db_name):
     """Delete all records from the index tables and reinitialize."""
     logger.warning(f"Wiping all tables from database: {db_name}")
-    conn = get_db(db_name)
-    with conn:
-        cursor = conn.cursor()
-        # The most robust way to wipe is to drop the tables entirely.
-        cursor.execute("DROP TABLE IF EXISTS pdf_text_fts")
-        cursor.execute("DROP TABLE IF EXISTS pages")
-        cursor.execute("DROP TABLE IF EXISTS chapters")
-        cursor.execute("DROP TABLE IF EXISTS files")
-        # Reset schema version so init_db recreates with current schema.
-        cursor.execute("PRAGMA user_version = 0")
+    conn = _get_conn(db_name)
+    try:
+        with conn:
+            cursor = conn.cursor()
+            # The most robust way to wipe is to drop the tables entirely.
+            cursor.execute("DROP TABLE IF EXISTS pdf_text_fts")
+            cursor.execute("DROP TABLE IF EXISTS pages")
+            cursor.execute("DROP TABLE IF EXISTS chapters")
+            cursor.execute("DROP TABLE IF EXISTS files")
+            # Reset schema version so init_db recreates with current schema.
+            cursor.execute("PRAGMA user_version = 0")
+    finally:
+        conn.close()
+    # Invalidate any thread-local connection so subsequent get_db() calls
+    # get a fresh connection against the rebuilt schema.
+    old_conn = getattr(_worker_local, "conn", None)
+    if old_conn is not None:
+        try:
+            old_conn.close()
+        except Exception:
+            pass
+        _worker_local.conn = None
+        _worker_local.db_name = None
     # Re-initialize the tables to be ready for new data.
     init_db(db_name)
     logger.info("Database wipe and re-initialization complete.")

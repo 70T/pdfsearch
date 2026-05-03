@@ -56,9 +56,10 @@ class TestInitDb(BaseDBTest):
 
 class TestFileOperations(BaseDBTest):
     def test_add_and_query_file(self):
-        """Insert a file record and verify retrieval."""
-        file_id = db.add_or_update_file(
-            self.db_path, "test.pdf", "folder/test.pdf", 1000.0, "abc123"
+        """Insert a file record via commit_indexed_pdf and verify retrieval."""
+        file_id = db.commit_indexed_pdf(
+            self.db_path, "test.pdf", "folder/test.pdf", 1000.0, "abc123",
+            pages=[(1, "sample text")], chapters=[],
         )
         self.assertIsNotNone(file_id)
         rows = db.query_db(
@@ -72,11 +73,10 @@ class TestFileOperations(BaseDBTest):
 
     def test_delete_file(self):
         """Insert then delete a file, verify FTS content is also removed."""
-        file_id = db.add_or_update_file(
-            self.db_path, "delete_me.pdf", "folder/delete_me.pdf", 1000.0, "def456"
+        db.commit_indexed_pdf(
+            self.db_path, "delete_me.pdf", "folder/delete_me.pdf", 1000.0, "def456",
+            pages=[(1, "hello world")], chapters=[],
         )
-        # Insert a page into FTS
-        db.bulk_insert_pages(self.db_path, file_id, [(1, "hello world")])
 
         db.delete_file(self.db_path, "folder/delete_me.pdf")
 
@@ -94,16 +94,16 @@ class TestFileOperations(BaseDBTest):
         )
         self.assertEqual(len(fts_rows), 0)
 
-    def test_bulk_insert_pages(self):
-        """Insert pages via bulk_insert and verify FTS content."""
-        file_id = db.add_or_update_file(
-            self.db_path, "bulk.pdf", "folder/bulk.pdf", 1000.0, "ghi789"
-        )
+    def test_commit_indexed_pdf_pages(self):
+        """Insert pages via commit_indexed_pdf and verify FTS content."""
         pages = [
             (1, "alpha bravo charlie"),
             (2, "delta echo foxtrot"),
         ]
-        db.bulk_insert_pages(self.db_path, file_id, pages)
+        db.commit_indexed_pdf(
+            self.db_path, "bulk.pdf", "folder/bulk.pdf", 1000.0, "ghi789",
+            pages=pages, chapters=[],
+        )
 
         # Verify FTS search works
         rows = db.query_db(
@@ -116,9 +116,18 @@ class TestFileOperations(BaseDBTest):
 
     def test_get_unique_folders(self):
         """Insert files with different paths and verify folder extraction."""
-        db.add_or_update_file(self.db_path, "a.pdf", "fiction/a.pdf", 1000.0, "aaa")
-        db.add_or_update_file(self.db_path, "b.pdf", "science/b.pdf", 1000.0, "bbb")
-        db.add_or_update_file(self.db_path, "c.pdf", "fiction/c.pdf", 1000.0, "ccc")
+        db.commit_indexed_pdf(
+            self.db_path, "a.pdf", "fiction/a.pdf", 1000.0, "aaa",
+            pages=[(1, "text")], chapters=[],
+        )
+        db.commit_indexed_pdf(
+            self.db_path, "b.pdf", "science/b.pdf", 1000.0, "bbb",
+            pages=[(1, "text")], chapters=[],
+        )
+        db.commit_indexed_pdf(
+            self.db_path, "c.pdf", "fiction/c.pdf", 1000.0, "ccc",
+            pages=[(1, "text")], chapters=[],
+        )
 
         folders = db.get_unique_folders(self.db_path)
         self.assertIn("fiction", folders)
@@ -128,8 +137,9 @@ class TestFileOperations(BaseDBTest):
 class TestWipeDb(BaseDBTest):
     def test_wipe_and_rebuild(self):
         """Wipe the database and verify tables are recreated empty."""
-        db.add_or_update_file(
-            self.db_path, "wipe.pdf", "folder/wipe.pdf", 1000.0, "xxx"
+        db.commit_indexed_pdf(
+            self.db_path, "wipe.pdf", "folder/wipe.pdf", 1000.0, "xxx",
+            pages=[(1, "text")], chapters=[],
         )
         db.wipe_db(self.db_path)
 

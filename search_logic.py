@@ -41,8 +41,9 @@ RE_MULTIPLE_QUOTES = re.compile(r'"+')
 # --- Cache & Pattern Compilation ---
 
 
-@lru_cache(maxsize=1024)
-def _get_cleaned_text(page_text: str) -> str:
+@lru_cache(maxsize=512)
+def _html_escape_cached(page_text: str) -> str:
+    """Cache HTML-escaped page text for snippet generation."""
     if not page_text:
         return ""
     # Text in the database is already cleaned (translate + apply_display_fixes).
@@ -50,11 +51,11 @@ def _get_cleaned_text(page_text: str) -> str:
     return html.escape(page_text, quote=False)
 
 
-@lru_cache(maxsize=4096)
+@lru_cache(maxsize=512)
 def _cached_snippet(
     text: str, terms_tuple: tuple, highlight_patterns: tuple, min_match_pos: int = 0
 ) -> str:
-    cleaned_text = _get_cleaned_text(text)
+    cleaned_text = _html_escape_cached(text)
     return _get_full_sentence_snippet(
         cleaned_text, list(terms_tuple), min_match_pos, list(highlight_patterns)
     )
@@ -641,10 +642,6 @@ def perform_search(
                     grouped_results[relative_path]["total_matches"] = (
                         book_total_map.get(file_id, 0)
                     )
-                    
-                    if not isinstance(grouped_results[relative_path]["matches"], list):
-                        grouped_results[relative_path]["matches"] = []
-                        
                     grouped_results[relative_path]["matches"].append(
                         {
                             "page": page_num,

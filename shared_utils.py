@@ -31,7 +31,6 @@ STOP_WORDS = {
         "after",
         "before",
         "people",
-        "would",
     }
 }
 # --- Constants ---
@@ -144,9 +143,13 @@ GARBAGE_PATTERNS = [
     re.compile(r"#{4,}|\.{5,}"),
 ]
 
+# Named aliases for patterns accessed by index in other modules.
+GARBAGE_REPEATED_CHARS = GARBAGE_PATTERNS[6]   # 5+ repeated alpha chars (e.g. "eeeee")
+GARBAGE_REPEATED_TOKENS = GARBAGE_PATTERNS[8]  # repeated words/tokens (e.g. "ER ER ER")
+
 GARBAGE_PATTERNS_OCR_CHECK = (
     GARBAGE_PATTERNS[0],  # broken-bar lines
-    GARBAGE_PATTERNS[6],  # 5+ repeated alpha chars
+    GARBAGE_REPEATED_CHARS,  # 5+ repeated alpha chars
     GARBAGE_PATTERNS[7],  # repeated 2+ char sequences
 )
 
@@ -370,36 +373,36 @@ def _fix_hyphen(m):
 # --- Boilerplate Chapter Titles ---
 # Used to identify and skip indexing of pages belonging to boilerplate chapters.
 BOILERPLATE_CHAPTER_TITLES = [
-    re.compile(r"^\s*(?:Table of )?Contents\s*$", re.IGNORECASE | re.DOTALL),
-    re.compile(r"^\s*Introduction(?:\s+to.*)?\s*$", re.IGNORECASE | re.DOTALL),
-    re.compile(r"^\s*Preface\s*$", re.IGNORECASE | re.DOTALL),
-    re.compile(r"^\s*Foreword\s*$", re.IGNORECASE | re.DOTALL),
+    re.compile(r"^\s*(?:Table of )?Contents\s*$", re.IGNORECASE),
+    re.compile(r"^\s*Introduction(?:\s+to.*)?\s*$", re.IGNORECASE),
+    re.compile(r"^\s*Preface\s*$", re.IGNORECASE),
+    re.compile(r"^\s*Foreword\s*$", re.IGNORECASE),
     re.compile(
         r"^\s*About the (?:Author|Publisher|Illustrator)s?\s*$",
-        re.IGNORECASE | re.DOTALL,
+        re.IGNORECASE,
     ),
-    re.compile(r"^\s*Copyright\s*$", re.IGNORECASE | re.DOTALL),
-    re.compile(r"^\s*Dedication\s*$", re.IGNORECASE | re.DOTALL),
-    re.compile(r"^\s*Acknowledgements?\s*$", re.IGNORECASE | re.DOTALL),
-    re.compile(r"^\s*Legal\s*$", re.IGNORECASE | re.DOTALL),
-    re.compile(r"^\s*eBook license\s*$", re.IGNORECASE | re.DOTALL),
-    re.compile(r"^\s*Afterword\s*$", re.IGNORECASE | re.DOTALL),
-    re.compile(r"^\s*Further reading.*$", re.IGNORECASE | re.DOTALL),
-    re.compile(r"^\s*Praise for.*$", re.IGNORECASE | re.DOTALL),
-    re.compile(r"^\s*Backlist\s*$", re.IGNORECASE | re.DOTALL),
+    re.compile(r"^\s*Copyright\s*$", re.IGNORECASE),
+    re.compile(r"^\s*Dedication\s*$", re.IGNORECASE),
+    re.compile(r"^\s*Acknowledgements?\s*$", re.IGNORECASE),
+    re.compile(r"^\s*Legal\s*$", re.IGNORECASE),
+    re.compile(r"^\s*eBook license\s*$", re.IGNORECASE),
+    re.compile(r"^\s*Afterword\s*$", re.IGNORECASE),
+    re.compile(r"^\s*Further reading.*$", re.IGNORECASE),
+    re.compile(r"^\s*Praise for.*$", re.IGNORECASE),
+    re.compile(r"^\s*Backlist\s*$", re.IGNORECASE),
     re.compile(
-        r"^\s*An?\s+(?:[\w-]+\s+){1,5}Publication\s*$", re.IGNORECASE | re.DOTALL
+        r"^\s*An?\s+(?:[\w-]+\s+){1,5}Publication\s*$", re.IGNORECASE
     ),
-    re.compile(r"^\s*Maps\s*$", re.IGNORECASE | re.DOTALL),
-    re.compile(r"^\s*Title Page\s*$", re.IGNORECASE | re.DOTALL),
-    re.compile(r"^\s*Front Matter\s*$", re.IGNORECASE | re.DOTALL),
-    re.compile(r"^\s*Other Titles\s*$", re.IGNORECASE | re.DOTALL),
-    re.compile(r"^\s*Also by this Author\s*$", re.IGNORECASE | re.DOTALL),
-    re.compile(r"^\s*Excerpt from.*$", re.IGNORECASE | re.DOTALL),
-    re.compile(r"^\s*An Extract from.*$", re.IGNORECASE | re.DOTALL),
-    re.compile(r"^\s*Star Wars Legends Novels Timeline", re.IGNORECASE | re.DOTALL),
-    re.compile(r"^\s*Star Wars Novels Timeline", re.IGNORECASE | re.DOTALL),
-    re.compile(r"^\s*Timeline", re.IGNORECASE | re.DOTALL),
+    re.compile(r"^\s*Maps\s*$", re.IGNORECASE),
+    re.compile(r"^\s*Title Page\s*$", re.IGNORECASE),
+    re.compile(r"^\s*Front Matter\s*$", re.IGNORECASE),
+    re.compile(r"^\s*Other Titles\s*$", re.IGNORECASE),
+    re.compile(r"^\s*Also by this Author\s*$", re.IGNORECASE),
+    re.compile(r"^\s*Excerpt from.*$", re.IGNORECASE),
+    re.compile(r"^\s*An Extract from.*$", re.IGNORECASE),
+    re.compile(r"^\s*Star Wars Legends Novels Timeline", re.IGNORECASE),
+    re.compile(r"^\s*Star Wars Novels Timeline", re.IGNORECASE),
+    re.compile(r"^\s*Timeline", re.IGNORECASE),
 ]
 # --- OCR Character Normalization ---
 # Control character removal is folded into this table so that str.translate handles
@@ -717,7 +720,7 @@ def get_instance_lock(lock_name):
     lock_path = os.path.join(script_dir, f"{lock_name}.lock")
     f = None
     try:
-        f = open(lock_path, "a+")
+        f = open(lock_path, "a")
         if os.name == "nt":
             import msvcrt
 

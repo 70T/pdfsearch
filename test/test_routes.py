@@ -40,11 +40,10 @@ class BaseRouteTest(unittest.TestCase):
 
     def _add_test_content(self, filename, relative_path, file_hash, pages):
         """Helper to add a file with page content for search testing."""
-        file_id = db.add_or_update_file(
-            self.db_path, filename, relative_path, 1000.0, file_hash
+        return db.commit_indexed_pdf(
+            self.db_path, filename, relative_path, 1000.0, file_hash,
+            pages=pages, chapters=[],
         )
-        db.bulk_insert_pages(self.db_path, file_id, pages)
-        return file_id
 
 
 class TestRoutes(BaseRouteTest):

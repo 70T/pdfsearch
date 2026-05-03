@@ -266,6 +266,10 @@ def process_file_list(list_file, ocr_args, enhance=False):
         "Batch complete. Successful: %d  Failed: %d", len(successful), len(failed)
     )
 
+    # Prune successfully processed files from the retry tracker
+    for p in successful:
+        retries_dict.pop(p, None)
+
     failed_retry = []
     for p in failed:
         count = retries_dict.get(p, 0) + 1

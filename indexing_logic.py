@@ -11,6 +11,8 @@ from shared_utils import (
     UNWANTED_PATTERNS,
     BOILERPLATE_PATTERNS,
     GARBAGE_PATTERNS,
+    GARBAGE_REPEATED_CHARS,
+    GARBAGE_REPEATED_TOKENS,
     BOILERPLATE_CHAPTER_TITLES,
     TRANS_TABLE,
     OCR_EXEMPTIONS,
@@ -215,8 +217,7 @@ def _determine_ocr_status(doc, char_threshold=OCR_CHAR_THRESHOLD):
         )
         return "redo"
 
-    # We use GARBAGE_PATTERNS[6] which targets 5+ repeated alpha characters
-    matches_repeated_chars = GARBAGE_PATTERNS[6].findall(full_text_sample)
+    matches_repeated_chars = GARBAGE_REPEATED_CHARS.findall(full_text_sample)
 
     # If the text has a healthy ratio of stop words, it's likely valid English.
     # In that case, we significantly raise the threshold for repeated characters
@@ -235,7 +236,7 @@ def _determine_ocr_status(doc, char_threshold=OCR_CHAR_THRESHOLD):
         return "redo"
 
     # Increased threshold to 8 to avoid flagging "Ha ha ha" or "No no no".
-    matches_repeated_tokens = GARBAGE_PATTERNS[8].findall(full_text_sample)
+    matches_repeated_tokens = GARBAGE_REPEATED_TOKENS.findall(full_text_sample)
     # Filter out punctuation-only repeats (e.g. ". . ." or "- - -") which are common in formatting
     # Also filter out numeric repeats (e.g. "4 4 4" or "5+ 5+") common in tabletop stat blocks
     real_matches = []
@@ -358,6 +359,11 @@ def compute_file_hash(file_path):
         return sha256_hash.hexdigest()
     except Exception:
         return None
+
+
+def _reading_order_key(bbox, strip_width):
+    """Column-aware sorting key for multi-column PDF layouts."""
+    return (int(bbox[0] / strip_width), bbox[1])
 
 
 def index_pdf_file(
@@ -558,19 +564,13 @@ def index_pdf_file(
                     heavy_mode = True
 
             block_texts = []
-            # Define a robust column-aware sorting key
-            # We divide the page into vertical strips. Blocks in the same strip are sorted by Y.
-            # Strip width is ~40% of page width to handle 2-column layouts smoothly.
             strip_width = page.rect.width / 2.5
-
-            def reading_order_key(bbox):
-                return (int(bbox[0] / strip_width), bbox[1])
 
             if heavy_mode:
                 # Fast block-level extraction
                 blocks = page.get_text("blocks", flags=extraction_flags)
                 # Apply custom column-aware sort
-                sorted_blocks = sorted(blocks, key=lambda b: reading_order_key(b[:4]))
+                sorted_blocks = sorted(blocks, key=lambda b: _reading_order_key(b[:4], strip_width))
 
                 for b in sorted_blocks:
                     if b[6] == 0:  # Text block
@@ -585,7 +585,7 @@ def index_pdf_file(
 
                 # Apply custom column-aware sort
                 sorted_blocks = sorted(
-                    text_blocks, key=lambda b: reading_order_key(b["bbox"])
+                    text_blocks, key=lambda b: _reading_order_key(b["bbox"], strip_width)
                 )
 
                 for b in sorted_blocks:
@@ -676,7 +676,6 @@ def index_pdf_file(
         pages_to_return = []
         clean_toc = []
 
-        pages_to_insert = []
         prev_cleaned_text = None
         prev_page_num = None
 
