@@ -80,11 +80,14 @@ def _compile_highlight_patterns(terms_tuple):
                 .replace(r"\ ", spacer)
                 .replace(r"\'", r"['\u2019]\s*")
             )
+            clean_escaped = clean_escaped.replace(r"\-", r"[-\s]?")
             patterns.append(re.compile(r"(\b" + clean_escaped + r"\w*)", re.IGNORECASE))
         else:
             clean_escaped = (
                 re.escape(clean).replace(r"\ ", spacer).replace(r"\'", r"['\u2019]\s*")
             )
+            # Allow hyphens to match hyphen, whitespace, or nothing (e.g. "kelbor-hal" matches "Kelbor Hal")
+            clean_escaped = clean_escaped.replace(r"\-", r"[-\s]?")
             patterns.append(
                 re.compile(f"({prefix_b}{clean_escaped}{suffix_b})", re.IGNORECASE)
             )
@@ -105,6 +108,7 @@ def _compile_match_probes(terms_tuple):
                 .replace(r"\ ", spacer)
                 .replace(r"\'", r"['\u2019]\s*")
             )
+            clean_escaped = clean_escaped.replace(r"\-", r"[-\s]?")
             probes.append(re.compile(r"\b" + clean_escaped))
         else:
             prefix_b = r"\b" if clean[0].isalnum() else ""
@@ -112,6 +116,7 @@ def _compile_match_probes(terms_tuple):
             clean_escaped = (
                 re.escape(clean).replace(r"\ ", spacer).replace(r"\'", r"['\u2019]\s*")
             )
+            clean_escaped = clean_escaped.replace(r"\-", r"[-\s]?")
             probes.append(re.compile(f"{prefix_b}{clean_escaped}{suffix_b}"))
     return tuple(probes)
 

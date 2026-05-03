@@ -120,6 +120,27 @@ class TestSearchLogic(unittest.TestCase):
         snippet = _get_test_snippet(text, terms)
         self.assertIn("<b>skirts</b>. 'Your", snippet)
 
+    def test_hyphen_highlighting_space_separated(self):
+        # Term "kelbor-hal" should highlight "Kelbor Hal" (space instead of hyphen)
+        text = "She is the newly arrived representative of Kelbor Hal, the Fabricator General."
+        terms = ["kelbor-hal"]
+        snippet = _get_test_snippet(text, terms)
+        self.assertIn("<b>Kelbor Hal</b>", snippet)
+
+    def test_hyphen_highlighting_with_hyphen(self):
+        # Term "kelbor-hal" should highlight "Kelbor-Hal" (actual hyphen)
+        text = "She is the representative of Kelbor-Hal, the Fabricator."
+        terms = ["kelbor-hal"]
+        snippet = _get_test_snippet(text, terms)
+        self.assertIn("<b>Kelbor-Hal</b>", snippet)
+
+    def test_hyphen_highlighting_merged(self):
+        # Term "kelbor-hal" should highlight "KelborHal" (no separator)
+        text = "The agent of KelborHal arrived at dawn."
+        terms = ["kelbor-hal"]
+        snippet = _get_test_snippet(text, terms)
+        self.assertIn("<b>KelborHal</b>", snippet)
+
 
 # def test_closing_single_quote_spacing(self):
 #     # Ensure that no space is added before a closing single quote
@@ -134,3 +155,4 @@ class TestSearchLogic(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

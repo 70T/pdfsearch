@@ -1,3 +1,4 @@
+import asyncio
 import html
 import logging
 import os
@@ -93,14 +94,15 @@ def _html_to_discord(text: str) -> str:
         return ""
     # 1. Use placeholders for our highlight tags so they don't get escaped
     text = text.replace("<b>", "\x01").replace("</b>", "\x02")
-    # 2. Unescape HTML (converts &lt; to <, etc)
-    text = html.unescape(text)
-    # 3. Escape Markdown special characters
-    text = RE_MD_ESCAPE.sub(r"\\\1", text)
-    # 4. Restore our highlight tags as Discord bold
-    text = RE_BOLD_PLACEHOLDERS.sub("**", text)
-    # 5. Remove any remaining HTML tags
+    # 2. Strip any remaining HTML tags while entities are still escaped
+    #    (prevents &lt;xref&gt; from being unescaped to <xref> and then stripped)
     text = RE_HTML_TAGS.sub("", text)
+    # 3. Unescape HTML entities (converts &lt; to <, &amp; to &, etc)
+    text = html.unescape(text)
+    # 4. Escape Markdown special characters
+    text = RE_MD_ESCAPE.sub(r"\\\1", text)
+    # 5. Restore our highlight tags as Discord bold
+    text = RE_BOLD_PLACEHOLDERS.sub("**", text)
     return text.strip()
 
 
@@ -137,8 +139,11 @@ async def fetch_api(bot, endpoint, params=None):
     except aiohttp.ClientError as e:
         logger.error(f"API connection error on {endpoint}: {e}")
         return {"error": "Could not reach the search backend."}
+    except asyncio.TimeoutError:
+        logger.error(f"API timeout on {endpoint} (>{API_TIMEOUT}s)")
+        return {"error": "Request timed out."}
     except Exception as e:
-        logger.error(f"API Error on {endpoint}: {e}")
+        logger.error(f"API Error on {endpoint}: {type(e).__name__}: {e}")
     return None
 
 
@@ -314,16 +319,21 @@ async def search(
 
     # Determine which folders to search in
     if folders:
-        # User provided specific folders; check if they are allowed
+        # User provided specific folders
         requested = [f.strip() for f in folders.split(",")]
         allowed = get_allowed_folders_for_interaction(interaction)
-        selected = [f for f in requested if is_folder_allowed(f, allowed)]
-        if not selected:
-            await interaction.followup.send(
-                f"None of the requested folders are in your whitelist. Allowed: {', '.join(allowed) or 'All'}",
-                ephemeral=True,
-            )
-            return
+        if allowed:
+            # Whitelist is active: filter to only allowed folders
+            selected = [f for f in requested if is_folder_allowed(f, allowed)]
+            if not selected:
+                await interaction.followup.send(
+                    f"None of the requested folders are in your whitelist. Allowed: {', '.join(allowed)}",
+                    ephemeral=True,
+                )
+                return
+        else:
+            # No whitelist: accept all requested folders
+            selected = requested
     else:
         # Use interaction-specific whitelist (default)
         selected = get_allowed_folders_for_interaction(interaction)
@@ -354,6 +364,38 @@ async def search(
     total_books = data.get("total_books", 0)
     total_pages = data.get("total_pages", 0)
 
+    # Fetch snippets for matches that didn't get one in the initial response
+    snippet_tasks = []
+    snippet_targets = []  # Track which match dict to update
+    sem = asyncio.Semaphore(10)  # Limit concurrent requests to the backend
+
+    async def _fetch_snippet(file_id, page_num):
+        async with sem:
+            return await fetch_api(
+                bot,
+                "/api/snippets",
+                {"file_id": file_id, "page_num": page_num, "search_query": query},
+            )
+
+    for entry in results:
+        for match in entry["matches"]:
+            if match.get("snippet"):
+                continue
+            file_id = match.get("file_id")
+            page_num = match.get("page")
+            if file_id is None or page_num is None:
+                continue
+            snippet_tasks.append(_fetch_snippet(file_id, page_num))
+            snippet_targets.append(match)
+
+    if snippet_tasks:
+        snippet_results = await asyncio.gather(*snippet_tasks, return_exceptions=True)
+        for match, snippet_data in zip(snippet_targets, snippet_results):
+            if isinstance(snippet_data, Exception):
+                continue
+            if snippet_data and snippet_data.get("snippet"):
+                match["snippet"] = snippet_data["snippet"]
+
     # Build text blocks for 3 matches per embed
     page_blocks = []
     current_match_blocks = []
@@ -378,10 +420,12 @@ async def search(
             if match.get("chapter"):
                 page_info += f" - {match['chapter']}"
 
-            snippet_text = _html_to_discord(match["snippet"])
-            quoted_snippet = "\n".join(f"> {line}" for line in snippet_text.split("\n"))
-
-            block = f"{match_header}\n{page_info}\n{quoted_snippet}"
+            snippet_text = _html_to_discord(match.get("snippet"))
+            if snippet_text:
+                quoted_snippet = "\n".join(f"> {line}" for line in snippet_text.split("\n"))
+                block = f"{match_header}\n{page_info}\n{quoted_snippet}"
+            else:
+                block = f"{match_header}\n{page_info}"
             current_match_blocks.append(block)
 
             if len(current_match_blocks) >= MATCHES_PER_PAGE:
@@ -421,9 +465,21 @@ async def search_folders_autocomplete(
     interaction: discord.Interaction, current: str
 ) -> list[app_commands.Choice[str]]:
     allowed = get_allowed_folders_for_interaction(interaction)
+
+    # Fetch actual indexed folders from the API
+    data = await fetch_api(bot, "/api/folders")
+    api_folders = data.get("folders", []) if data and not data.get("error") else []
+
+    if allowed:
+        # Whitelist is active: include whitelisted folders + their subfolders
+        candidates = [f for f in api_folders if is_folder_allowed(f, allowed)]
+    else:
+        # No whitelist: show all folders
+        candidates = api_folders
+
     return [
         app_commands.Choice(name=f, value=f)
-        for f in allowed
+        for f in candidates
         if current.lower() in f.lower()
     ][:25]
 
