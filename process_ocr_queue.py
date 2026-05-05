@@ -138,7 +138,9 @@ def _build_base_cmd(enhance):
 def _run_ocrmypdf(cmd):
     """Run a command, returning the CompletedProcess. Low priority on Windows."""
     if sys.platform == "win32":
-        return subprocess.run(cmd, capture_output=True, text=True, creationflags=0x00004000)
+        return subprocess.run(
+            cmd, capture_output=True, text=True, creationflags=0x00004000
+        )
     return subprocess.run(cmd, capture_output=True, text=True)
 
 

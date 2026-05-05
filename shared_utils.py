@@ -144,7 +144,7 @@ GARBAGE_PATTERNS = [
 ]
 
 # Named aliases for patterns accessed by index in other modules.
-GARBAGE_REPEATED_CHARS = GARBAGE_PATTERNS[6]   # 5+ repeated alpha chars (e.g. "eeeee")
+GARBAGE_REPEATED_CHARS = GARBAGE_PATTERNS[6]  # 5+ repeated alpha chars (e.g. "eeeee")
 GARBAGE_REPEATED_TOKENS = GARBAGE_PATTERNS[8]  # repeated words/tokens (e.g. "ER ER ER")
 
 GARBAGE_PATTERNS_OCR_CHECK = (
@@ -390,9 +390,7 @@ BOILERPLATE_CHAPTER_TITLES = [
     re.compile(r"^\s*Further reading.*$", re.IGNORECASE),
     re.compile(r"^\s*Praise for.*$", re.IGNORECASE),
     re.compile(r"^\s*Backlist\s*$", re.IGNORECASE),
-    re.compile(
-        r"^\s*An?\s+(?:[\w-]+\s+){1,5}Publication\s*$", re.IGNORECASE
-    ),
+    re.compile(r"^\s*An?\s+(?:[\w-]+\s+){1,5}Publication\s*$", re.IGNORECASE),
     re.compile(r"^\s*Maps\s*$", re.IGNORECASE),
     re.compile(r"^\s*Title Page\s*$", re.IGNORECASE),
     re.compile(r"^\s*Front Matter\s*$", re.IGNORECASE),
@@ -715,7 +713,12 @@ def get_instance_lock(lock_name):
     import sys
 
     # Use the script's directory for the lock file
-    script_file = sys.modules["__main__"].__file__ if "__main__" in sys.modules and getattr(sys.modules["__main__"], "__file__", None) else __file__
+    script_file = (
+        sys.modules["__main__"].__file__
+        if "__main__" in sys.modules
+        and getattr(sys.modules["__main__"], "__file__", None)
+        else __file__
+    )
     script_dir = os.path.dirname(os.path.abspath(str(script_file)))
     lock_path = os.path.join(script_dir, f"{lock_name}.lock")
     f = None

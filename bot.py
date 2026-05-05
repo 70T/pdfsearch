@@ -39,9 +39,7 @@ def _parse_id_list(env_val: str) -> set[int]:
 ALLOWED_GUILDS: set[int] = _parse_id_list(os.getenv("ALLOWED_GUILDS", ""))
 ALLOWED_USERS: set[int] = _parse_id_list(os.getenv("ALLOWED_USERS", ""))
 ALLOWED_FOLDERS = [
-    f.strip()
-    for f in os.getenv("ALLOWED_FOLDERS", "").split(",")
-    if f.strip()
+    f.strip() for f in os.getenv("ALLOWED_FOLDERS", "").split(",") if f.strip()
 ]
 
 # Folder Whitelists
@@ -422,7 +420,9 @@ async def search(
 
             snippet_text = _html_to_discord(match.get("snippet"))
             if snippet_text:
-                quoted_snippet = "\n".join(f"> {line}" for line in snippet_text.split("\n"))
+                quoted_snippet = "\n".join(
+                    f"> {line}" for line in snippet_text.split("\n")
+                )
                 block = f"{match_header}\n{page_info}\n{quoted_snippet}"
             else:
                 block = f"{match_header}\n{page_info}"

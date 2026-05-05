@@ -142,9 +142,7 @@ def init_db(db_name):
                 "CREATE INDEX IF NOT EXISTS idx_pages_rowid_fts ON pages (rowid_fts)"
             )
 
-
-# --- Migrations ---
-
+            # --- Migrations ---
 
             if schema_version < 1:
                 cursor.execute(
@@ -366,7 +364,6 @@ def check_db_has_content(db_name):
 # --- Batch Insertion ---
 
 
-
 def get_chapters_for_files(db_name, file_ids):
     """Batch-fetch all chapter data for a set of file IDs in one query.
     Returns {file_id: [(page_num, title, level), ...]} sorted by page_num descending
@@ -508,7 +505,6 @@ def commit_indexed_pdfs_batch(db_name, batch_data):
                     "INSERT INTO chapters (file_id, page_num, title, level) VALUES (?, ?, ?, ?)",
                     chapters_data,
                 )
-
 
 
 def get_files_by_hash(db_name, file_hash):

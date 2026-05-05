@@ -81,8 +81,13 @@ class TestUXFeatures(BaseUXTest):
         """/search_results_partial should return result items HTML."""
         # Setup data
         db.commit_indexed_pdf(
-            self.db_path, "test.pdf", "test.pdf", 1000.0, "h1",
-            pages=[(1, "unique_term")], chapters=[],
+            self.db_path,
+            "test.pdf",
+            "test.pdf",
+            1000.0,
+            "h1",
+            pages=[(1, "unique_term")],
+            chapters=[],
         )
 
         response = self.client.get("/search_results_partial?search_query=unique_term")
@@ -101,8 +106,13 @@ class TestUXFeatures(BaseUXTest):
         """Regression test: Ensure templates handle match dicts correctly."""
         # Setup data
         db.commit_indexed_pdf(
-            self.db_path, "dict_test.pdf", "dict_test.pdf", 1000.0, "h1",
-            pages=[(5, "page 5 content")], chapters=[],
+            self.db_path,
+            "dict_test.pdf",
+            "dict_test.pdf",
+            1000.0,
+            "h1",
+            pages=[(5, "page 5 content")],
+            chapters=[],
         )
 
         # Configure FILES_DIRECTORY so browser link matches are generated
@@ -123,8 +133,13 @@ class TestUXFeatures(BaseUXTest):
         """Test the /api/snippets endpoint."""
         # Setup data
         file_id = db.commit_indexed_pdf(
-            self.db_path, "snippet_test.pdf", "snippet_test.pdf", 1000.0, "h1",
-            pages=[(1, "This is a test snippet content.")], chapters=[],
+            self.db_path,
+            "snippet_test.pdf",
+            "snippet_test.pdf",
+            1000.0,
+            "h1",
+            pages=[(1, "This is a test snippet content.")],
+            chapters=[],
         )
 
         # Call API

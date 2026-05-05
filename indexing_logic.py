@@ -570,7 +570,9 @@ def index_pdf_file(
                 # Fast block-level extraction
                 blocks = page.get_text("blocks", flags=extraction_flags)
                 # Apply custom column-aware sort
-                sorted_blocks = sorted(blocks, key=lambda b: _reading_order_key(b[:4], strip_width))
+                sorted_blocks = sorted(
+                    blocks, key=lambda b: _reading_order_key(b[:4], strip_width)
+                )
 
                 for b in sorted_blocks:
                     if b[6] == 0:  # Text block
@@ -585,7 +587,8 @@ def index_pdf_file(
 
                 # Apply custom column-aware sort
                 sorted_blocks = sorted(
-                    text_blocks, key=lambda b: _reading_order_key(b["bbox"], strip_width)
+                    text_blocks,
+                    key=lambda b: _reading_order_key(b["bbox"], strip_width),
                 )
 
                 for b in sorted_blocks:

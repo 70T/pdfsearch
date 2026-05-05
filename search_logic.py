@@ -154,7 +154,6 @@ def _compile_offset_patterns(terms_tuple):
     return tuple(compiled)
 
 
-
 # --- Relevance Filtering ---
 
 
@@ -572,39 +571,6 @@ def perform_search(
         for row in db_results:
             rowid, file_id, filename, relative_path, page_num, page_text = row
             filename = filename.removesuffix(".pdf")
-            lower_page = page_text.lower()
-            approx_pos = next(
-                (m.start() for p in matchers if (m := p.search(lower_page))), None
-            )
-
-            full_text, match_offset = page_text, approx_pos or 0
-
-            # Lookup neighbors using our new (file_id, page_num) neighbor_map
-            prev_text = neighbor_map.get((file_id, page_num - 1))
-            if prev_text and (
-                approx_pos is None or approx_pos < _STITCH_BOUNDARY_CHARS
-            ):
-                merged, start_of_new = _merge_overlapping_pages(prev_text, full_text)
-                full_text = merged
-                if approx_pos is not None:
-                    match_offset = start_of_new + approx_pos
-                else:
-                    match_offset = start_of_new
-
-            nxt_text = neighbor_map.get((file_id, page_num + 1))
-            if nxt_text and (
-                approx_pos is None
-                or (len(page_text) - approx_pos) < _STITCH_BOUNDARY_CHARS
-            ):
-                full_text, _ = _merge_overlapping_pages(full_text, nxt_text)
-
-            # Use the deduplication registry to ensure we pass the same string object for the same text
-            # This allows lru_cache to skip re-hashing the string if it has already been hashed.
-            if full_text in full_text_registry:
-                full_text = full_text_registry[full_text]
-            else:
-                full_text_registry[full_text] = full_text
-
             breadcrumb, current_level = [], float("inf")
             for ch_page, ch_title, ch_lvl in chapters_by_file.get(file_id, []):
                 if ch_page <= page_num:
@@ -614,47 +580,99 @@ def perform_search(
                     if ch_lvl == 1:
                         break
             chapter_title = " > ".join(reversed(breadcrumb)) if breadcrumb else None
-            rich_snippet = _cached_snippet(
-                full_text, tuple(highlight_terms), highlight_patterns, match_offset
-            )
 
-            if rich_snippet:
-                is_duplicate = False
-                last = last_page_data.get(file_id)
-                if (
-                    last
-                    and last["page"] == page_num - 1
-                    and _is_similar_snippet(last["snippet"], rich_snippet)
-                ):
-                    is_duplicate = True
-                if not is_duplicate:
-                    last_page_data[file_id] = {
+            if not page_text:
+                # We didn't fetch the text for this page. Add it as a lazy-load match.
+                grouped_results[relative_path]["filename"] = filename
+                grouped_results[relative_path]["total_matches"] = book_total_map.get(
+                    file_id, 0
+                )
+                grouped_results[relative_path]["matches"].append(
+                    {
                         "page": page_num,
-                        "snippet": rich_snippet,
+                        "snippet": None,
+                        "chapter": chapter_title,
+                        "file_id": file_id,
                     }
-                    is_duplicate_text = rich_snippet in seen_snippets[relative_path]
-                    if not is_duplicate_text:
-                        seen_snippets[relative_path].add(rich_snippet)
-                    snippet_to_store = (
-                        rich_snippet
-                        if snippet_count_per_book[file_id] < SNIPPETS_PER_BOOK_INITIAL
-                        and not is_duplicate_text
-                        else None
+                )
+            else:
+                lower_page = page_text.lower()
+                approx_pos = next(
+                    (m.start() for p in matchers if (m := p.search(lower_page))), None
+                )
+
+                full_text, match_offset = page_text, approx_pos or 0
+
+                # Lookup neighbors using our new (file_id, page_num) neighbor_map
+                prev_text = neighbor_map.get((file_id, page_num - 1))
+                if prev_text and (
+                    approx_pos is None or approx_pos < _STITCH_BOUNDARY_CHARS
+                ):
+                    merged, start_of_new = _merge_overlapping_pages(
+                        prev_text, full_text
                     )
-                    if snippet_to_store:
-                        snippet_count_per_book[file_id] += 1
-                    grouped_results[relative_path]["filename"] = filename
-                    grouped_results[relative_path]["total_matches"] = (
-                        book_total_map.get(file_id, 0)
-                    )
-                    grouped_results[relative_path]["matches"].append(
-                        {
+                    full_text = merged
+                    if approx_pos is not None:
+                        match_offset = start_of_new + approx_pos
+                    else:
+                        match_offset = start_of_new
+
+                nxt_text = neighbor_map.get((file_id, page_num + 1))
+                if nxt_text and (
+                    approx_pos is None
+                    or (len(page_text) - approx_pos) < _STITCH_BOUNDARY_CHARS
+                ):
+                    full_text, _ = _merge_overlapping_pages(full_text, nxt_text)
+
+                # Use the deduplication registry to ensure we pass the same string object for the same text
+                # This allows lru_cache to skip re-hashing the string if it has already been hashed.
+                if full_text in full_text_registry:
+                    full_text = full_text_registry[full_text]
+                else:
+                    full_text_registry[full_text] = full_text
+
+                rich_snippet = _cached_snippet(
+                    full_text, tuple(highlight_terms), highlight_patterns, match_offset
+                )
+
+                if rich_snippet:
+                    is_duplicate = False
+                    last = last_page_data.get(file_id)
+                    if (
+                        last
+                        and last["page"] == page_num - 1
+                        and _is_similar_snippet(last["snippet"], rich_snippet)
+                    ):
+                        is_duplicate = True
+                    if not is_duplicate:
+                        last_page_data[file_id] = {
                             "page": page_num,
-                            "snippet": snippet_to_store,
-                            "chapter": chapter_title,
-                            "file_id": file_id,
+                            "snippet": rich_snippet,
                         }
-                    )
+                        is_duplicate_text = rich_snippet in seen_snippets[relative_path]
+                        if not is_duplicate_text:
+                            seen_snippets[relative_path].add(rich_snippet)
+                        snippet_to_store = (
+                            rich_snippet
+                            if snippet_count_per_book[file_id]
+                            < SNIPPETS_PER_BOOK_INITIAL
+                            and not is_duplicate_text
+                            else None
+                        )
+                        if snippet_to_store:
+                            snippet_count_per_book[file_id] += 1
+                        grouped_results[relative_path]["filename"] = filename
+                        grouped_results[relative_path]["total_matches"] = (
+                            book_total_map.get(file_id, 0)
+                        )
+                        grouped_results[relative_path]["matches"].append(
+                            {
+                                "page": page_num,
+                                "snippet": snippet_to_store,
+                                "chapter": chapter_title,
+                                "file_id": file_id,
+                            }
+                        )
 
         for path in grouped_results:
             if isinstance(grouped_results[path]["matches"], list):
